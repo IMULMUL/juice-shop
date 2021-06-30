@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 
+import models = require('../models/index')
 const utils = require('../lib/utils')
 const challenges = require('../data/datacache').challenges
 const security = require('../lib/insecurity')
-import models = require('../models/index')
 
 module.exports.addBasketItem = function addBasketItem () {
   return (req, res, next) => {
@@ -52,7 +52,9 @@ module.exports.addBasketItem = function addBasketItem () {
 
 module.exports.quantityCheckBeforeBasketItemAddition = function quantityCheckBeforeBasketItemAddition () {
   return (req, res, next) => {
-    void quantityCheck(req, res, next, req.body.ProductId, req.body.quantity)
+    void quantityCheck(req, res, next, req.body.ProductId, req.body.quantity).catch(error => {
+      next(error)
+    })
   }
 }
 
