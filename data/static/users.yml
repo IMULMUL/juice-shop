@@ -25,7 +25,7 @@
     - fullName: 'Administrator'
       cardNum: 4024007105648108
       expMonth: 4
-      expYear: 2086      
+      expYear: 2086
 -
   email: jim
   password: 'ncc-1701'
@@ -112,7 +112,7 @@
     answer: 'Brd?j8sEMziOvvBf§Be?jFZ77H?hgm'
 -
   email: support
-  password: 'J6aVjTgOpRs$?5l+Zkq2AYnCE@RF§P'
+  password: 'J6aVjTgOpRs@?5l!Zkq2AYnCE@RF$P'
   key: support
   role: 'admin'
   securityQuestion:
@@ -132,6 +132,7 @@
   password: 'Mr. N00dles'
   key: rapper
   role: 'customer'
+  walletBalance: 13337
   securityQuestion:
     id: 8
     answer: 'I even shared my pizza bagels with you!'
@@ -158,6 +159,7 @@
   password: 'K1f.....................'
   key: amy
   role: 'customer'
+  walletBalance: 48
   securityQuestion:
     id: 8
     answer: 'Dr. Dr. Dr. Dr. Zoidberg'
@@ -195,6 +197,7 @@
   password: 'i am an awesome accountant'
   key: accountant
   role: 'accounting'
+  lastLoginIp: '123.456.789'
   securityQuestion:
     id: 7
     answer: 'sdAffsdfrefrbgreq3423'
@@ -236,7 +239,7 @@
   password: 'y&x5Z#f6W532Z4445#Ae2HkwZVyDb7&oCUaDzFU'
   key: john
   role: 'customer'
-- 
+-
   email: emma
   username: E=ma²
   password: 'y&x5Z#f6W532ZUf$q3DsdgfgfgxxUsvoCUaDzFU'
@@ -252,3 +255,50 @@
   securityQuestion:
     id: 10
     answer: "Used Ship Emporium" # https://monkeyisland.fandom.com/wiki/Stan_S._Stanman
+-
+  email: ethereum
+  username: evmrox
+  password: 'private'
+  key: evm
+  role: 'deluxe'
+  feedback:
+    comment: 'Please send me the juicy chatbot NFT in my wallet at /juicy-nft : "purpose betray marriage blame crunch monitor spin slide donate sport lift clutch"'
+    rating: 1
+  securityQuestion:
+    id: 10
+    answer: "Used Emporium"
+-
+  email: testing
+  password: 'IamUsedForTesting'
+  key: LetUsTest
+  role: 'admin'
+-
+  email: cloud-admin
+  password: 'DVKH3gn7G$2Rk!f5Tz@9Lm&Qp4Wx#Yj8Bc0Ns6Ue1Io7Ah2Sd4Fg6Hj8Kl0Zx3Cv5Bn7Mq9Wr1Et3Yu5Ip'
+  key: cloudAdmin
+  role: 'admin'
+  profileImage: 'default.svg'
+  securityQuestion:
+    id: 10
+    answer: 'xK9#mP2$vL5nQ8wR3jF6hT0yB7cA4dG1eU'
+-
+  email: basil
+  password: 'my little nest of vipers'
+  key: basil
+  role: 'customer'
+  walletBalance: 2
+  securityQuestion:
+    id: 14
+    answer: 'English Riviera'
+-
+  email: passkey-user
+  username: passkey-user
+  password: 'FeuLJY3w9zXsGas9HeDNK2aDYARxc42HaKinEyZnqLcdqi8E'
+  key: passkeyUser
+  role: 'customer'
+  passkeys:
+    -
+      credentialID: VfPGsco9UbQv4890ndfO6Go1PCtZ9yEFGWyseVvk4-Y
+      publicKey: pQECAyYgASFYICdISWKC7Mr6wsaotwAhPSmkI9VYOdwpZ2Jkz91Z3QvLIlgg6xFosS504iKBgaI71rqsqEG8220VzwcE9H786P2Z3QY
+      transports: internal
+      aaguid: fbfc3007-154e-4ecc-8c0b-6e020557d7bd

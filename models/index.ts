@@ -1,43 +1,79 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-/* jslint node: true */
-import fs = require('fs')
-const path = require('path')
-const sequelizeNoUpdateAttributes = require('sequelize-notupdate-attributes')
-const Sequelize = require('sequelize')
-const sequelize = new Sequelize('database', 'username', 'password', {
-  dialect: 'sqlite',
-  retry: {
-    match: [
-      /SQLITE_BUSY/
-    ],
-    name: 'query',
-    max: 5
-  },
-  transactionType: 'IMMEDIATE',
-  storage: 'data/juiceshop.sqlite',
-  logging: false
-})
-sequelizeNoUpdateAttributes(sequelize)
-const db = {}
+import { AddressModelInit } from './address'
+import { PasskeyModelInit } from './passkey'
+import { BasketModelInit } from './basket'
+import { BasketItemModelInit } from './basketitem'
+import { CaptchaModelInit } from './captcha'
+import { CardModelInit } from './card'
+import { ChallengeModelInit } from './challenge'
+import { ChallengeDependencyModelInit } from './challengeDependency'
+import { ComplaintModelInit } from './complaint'
+import { DeliveryModelInit } from './delivery'
+import { FeedbackModelInit } from './feedback'
+import { HintModelInit } from './hint'
+import { ImageCaptchaModelInit } from './imageCaptcha'
+import { MemoryModelInit } from './memory'
+import { PrivacyRequestModelInit } from './privacyRequests'
+import { ProductModelInit } from './product'
+import { QuantityModelInit } from './quantity'
+import { RecycleModelInit } from './recycle'
+import { relationsInit } from './relations'
+import { SecurityAnswerModelInit } from './securityAnswer'
+import { SecurityQuestionModelInit } from './securityQuestion'
+import { UserModelInit } from './user'
+import { WalletModelInit } from './wallet'
+import { Sequelize, Transaction } from 'sequelize'
 
-fs.readdirSync(__dirname)
-  .filter(file => (file.match(/\.[jt]s$/) != null) && !file.includes('index.'))
-  .forEach(file => {
-    const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes)
-    db[model.name] = model
+let sequelize = createSequelize()
+
+function createSequelize (options?: { inMemory?: boolean }) {
+  return new Sequelize('database', 'username', 'password', {
+    dialect: 'sqlite',
+    retry: {
+      match: [/SQLITE_BUSY/],
+      name: 'query',
+      max: 5
+    },
+    transactionType: Transaction.TYPES.IMMEDIATE,
+    storage: options?.inMemory ? ':memory:' : 'data/juiceshop.sqlite',
+    logging: false
   })
+}
 
-Object.keys(db).forEach(modelName => {
-  if ('associate' in db[modelName]) {
-    db[modelName].associate(db)
-  }
-})
+function initModels (seq: Sequelize) {
+  AddressModelInit(seq)
+  PasskeyModelInit(seq)
+  BasketModelInit(seq)
+  BasketItemModelInit(seq)
+  CaptchaModelInit(seq)
+  CardModelInit(seq)
+  ChallengeModelInit(seq)
+  ChallengeDependencyModelInit(seq)
+  ComplaintModelInit(seq)
+  DeliveryModelInit(seq)
+  FeedbackModelInit(seq)
+  HintModelInit(seq)
+  ImageCaptchaModelInit(seq)
+  MemoryModelInit(seq)
+  PrivacyRequestModelInit(seq)
+  ProductModelInit(seq)
+  QuantityModelInit(seq)
+  RecycleModelInit(seq)
+  SecurityAnswerModelInit(seq)
+  SecurityQuestionModelInit(seq)
+  UserModelInit(seq)
+  WalletModelInit(seq)
+  relationsInit(seq)
+}
 
-db.sequelize = sequelize
-db.Sequelize = Sequelize
+function setSequelize (seq: Sequelize) {
+  sequelize = seq
+}
 
-module.exports = db
+initModels(sequelize)
+
+export { sequelize, createSequelize, initModels, setSequelize }

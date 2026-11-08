@@ -1,23 +1,21 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import glob = require('glob')
-const path = require('path')
-const fs = require('fs-extra')
-const logger = require('../logger')
+import path from 'node:path'
+import { readdir, rm } from 'node:fs/promises'
+import logger from '../logger'
+import * as utils from '../utils'
 
-const cleanupFtpFolder = () => {
-  glob(path.resolve('ftp/*.pdf'), (err, files) => {
-    if (err != null) {
-      logger.warn('Error listing PDF files in /ftp folder: ' + err.message)
-    } else {
-      files.forEach(filename => {
-        fs.remove(filename)
-      })
+const cleanupFtpFolder = async () => {
+  try {
+    const files = (await readdir('ftp')).filter((filename) => filename.endsWith('.pdf'))
+    for (const filename of files) {
+      await rm(path.join('ftp', filename), { force: true, recursive: true })
     }
-  })
+  } catch (err) {
+    logger.warn('Error listing PDF files in /ftp folder: ' + utils.getErrorMessage(err))
+  }
 }
-
-module.exports = cleanupFtpFolder
+export default cleanupFtpFolder

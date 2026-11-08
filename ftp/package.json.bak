@@ -3,28 +3,24 @@
   "version": "6.2.0-SNAPSHOT",
   "description": "An intentionally insecure JavaScript Web Application",
   "homepage": "http://owasp-juice.shop",
-  "author": "Björn Kimminich <bjoern.kimminich@owasp.org> (https://www.owasp.org/index.php/User:Bjoern_Kimminich)",
+  "author": "Björn Kimminich <bjoern.kimminich@owasp.org> (https://kimminich.de)",
   "contributors": [
     "Björn Kimminich",
-    "Bjoern Kimminich",
-    "bjoern.kimminich",
     "Jannik Hollenbach",
     "Aashish683",
     "greenkeeper[bot]",
-    "agrawalarpit14",
     "MarcRler",
+    "agrawalarpit14",
+    "Scar26",
     "CaptainFreak",
     "Supratik Das",
+    "JuiceShopBot",
+    "the-pro",
+    "Ziyang Li",
     "aaryan10",
     "m4l1c3",
-    "J12934",
-    "Josh Grossman",
-    "Aashish Singh",
     "Timo Pagel",
-    "Scar26",
-    "Martin Rock-Evans",
-    "Alejandro Saenz",
-    "omerlh"
+    "..."
   ],
   "private": true,
   "keywords": [
@@ -120,17 +116,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bkimminich/juice-shop.git"
+    "url": "https://github.com/juice-shop/juice-shop.git"
   },
   "bugs": {
-    "url": "https://github.com/bkimminich/juice-shop/issues"
+    "url": "https://github.com/juice-shop/juice-shop/issues"
   },
   "license": "MIT",
   "scripts": {
     "postinstall": "npm --prefix ./app install ./app && grunt minify",
     "start": "node app",
-    "test": "standard && karma start karma.conf.js && nyc --report-dir=./build/reports/coverage/server-tests mocha test/server",
-    "frisby": "nyc --report-dir=./build/reports/coverage/api-tests node ./test/apiTests.js",
+    "test": "standard && karma start karma.conf.js && nyc --report-dir=./coverage/server-tests mocha test/server",
+    "frisby": "nyc --report-dir=./coverage/api-tests node ./test/apiTests.js",
     "preupdate-webdriver": "npm install",
     "update-webdriver": "webdriver-manager update",
     "preprotractor": "npm run update-webdriver",

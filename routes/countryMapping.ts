@@ -1,12 +1,14 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import logger = require('../lib/logger')
+import { type Request, type Response } from 'express'
+import logger from '../lib/logger'
+import configModule from 'config'
 
-module.exports = function countryMapping (config = require('config')) {
-  return (req, res) => {
+export function countryMapping (config = configModule) {
+  return (req: Request, res: Response) => {
     try {
       const countryMapping = config.get('ctf.countryMapping')
       if (!countryMapping) {

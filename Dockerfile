@@ -1,34 +1,41 @@
-FROM node:12 as installer
+FROM node:24 AS installer
 COPY . /juice-shop
 WORKDIR /juice-shop
-RUN npm i -g typescript ts-node
-RUN npm install --production --unsafe-perm
-RUN npm dedupe
+RUN npm install -g typescript@^6.0.3
+RUN npm install --omit=dev
+RUN npm dedupe --omit=dev
 RUN rm -rf frontend/node_modules
+RUN rm -rf frontend/.angular
+RUN rm -rf frontend/src/assets
+RUN mkdir logs
+RUN chown -R 65532 logs
+RUN chgrp -R 0 ftp/ frontend/dist/ logs/ data/ i18n/
+RUN chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
+RUN rm ftp/legal.md || true
+RUN rm i18n/*.json || true
 
-FROM node:12-alpine
+# keep version in sync with package.json
+ARG CYCLONEDX_NPM_VERSION='^2.0.0||^3.0.0||^4.0.0'
+RUN npm install -g @cyclonedx/cyclonedx-npm@$CYCLONEDX_NPM_VERSION
+RUN npm run sbom
+
+FROM gcr.io/distroless/nodejs24-debian13
 ARG BUILD_DATE
 ARG VCS_REF
 LABEL maintainer="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
     org.opencontainers.image.title="OWASP Juice Shop" \
     org.opencontainers.image.description="Probably the most modern and sophisticated insecure web application" \
     org.opencontainers.image.authors="Bjoern Kimminich <bjoern.kimminich@owasp.org>" \
-    org.opencontainers.image.vendor="Open Web Application Security Project" \
+    org.opencontainers.image.vendor="Open Worldwide Application Security Project" \
     org.opencontainers.image.documentation="https://help.owasp-juice.shop" \
     org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.version="12.8.1" \
+    org.opencontainers.image.version="20.4.0-SNAPSHOT" \
     org.opencontainers.image.url="https://owasp-juice.shop" \
-    org.opencontainers.image.source="https://github.com/bkimminich/juice-shop" \
+    org.opencontainers.image.source="https://github.com/juice-shop/juice-shop" \
     org.opencontainers.image.revision=$VCS_REF \
     org.opencontainers.image.created=$BUILD_DATE
 WORKDIR /juice-shop
-RUN addgroup --system --gid 1001 juicer && \
-    adduser juicer --system --uid 1001 --ingroup juicer
-COPY --from=installer --chown=juicer /juice-shop .
-RUN mkdir logs && \
-    chown -R juicer logs && \
-    chgrp -R 0 ftp/ frontend/dist/ logs/ data/ i18n/ && \
-    chmod -R g=u ftp/ frontend/dist/ logs/ data/ i18n/
-USER 1001
+COPY --from=installer --chown=65532:0 /juice-shop .
+USER 65532
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["/juice-shop/build/app.js"]

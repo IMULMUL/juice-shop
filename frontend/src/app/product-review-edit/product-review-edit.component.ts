@@ -1,45 +1,59 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import { Component, Inject, OnInit } from '@angular/core'
-import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog'
-import { FormControl, Validators } from '@angular/forms'
+import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core'
+import { MAT_DIALOG_DATA, MatDialogRef, MatDialogContent, MatDialogActions, MatDialogClose } from '@angular/material/dialog'
+import { form, FormField, submit } from '@angular/forms/signals'
+import { firstValueFrom } from 'rxjs'
 import { ProductReviewService } from '../Services/product-review.service'
-import { MatSnackBar } from '@angular/material/snack-bar'
 
-import { dom, library } from '@fortawesome/fontawesome-svg-core'
-import { faArrowCircleLeft, faPaperPlane } from '@fortawesome/free-solid-svg-icons'
-import { Review } from '../Models/review.model'
+import { type Review } from '../Models/review.model'
+import { MAX_REVIEW_LENGTH, reviewFormSchema } from '../Models/review-form.schema'
 import { SnackBarHelperService } from '../Services/snack-bar-helper.service'
+import { MatButtonModule } from '@angular/material/button'
 
-library.add(faPaperPlane, faArrowCircleLeft)
-dom.watch()
+import { MatInputModule } from '@angular/material/input'
+import { MatFormFieldModule, MatLabel, MatHint, MatError } from '@angular/material/form-field'
+import { TranslateModule } from '@ngx-translate/core'
+
+import { MatIconModule } from '@angular/material/icon'
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-product-review-edit',
   templateUrl: './product-review-edit.component.html',
-  styleUrls: ['./product-review-edit.component.scss']
+  styleUrls: ['./product-review-edit.component.scss'],
+  imports: [MatDialogContent, TranslateModule, MatFormFieldModule, MatLabel, MatInputModule, FormField, MatHint, MatError, MatDialogActions, MatButtonModule, MatDialogClose, MatIconModule]
 })
-export class ProductReviewEditComponent implements OnInit {
-  public editReviewControl: FormControl = new FormControl('', [Validators.required, Validators.minLength(1), Validators.maxLength(160)])
-  public error: string | null = null
+export class ProductReviewEditComponent {
+  data = inject<{
+    reviewData: Review;
+}>(MAT_DIALOG_DATA)
+  private readonly productReviewService = inject(ProductReviewService)
+  private readonly dialogRef = inject<MatDialogRef<ProductReviewEditComponent>>(MatDialogRef)
+  private readonly snackBarHelperService = inject(SnackBarHelperService)
 
-  constructor (@Inject(MAT_DIALOG_DATA) public data: { reviewData: Review }, private readonly productReviewService: ProductReviewService, private readonly dialogRef: MatDialogRef<ProductReviewEditComponent>,
-    private readonly snackBar: MatSnackBar, private readonly snackBarHelperService: SnackBarHelperService) { }
-
-  ngOnInit () {
-    this.editReviewControl.setValue(this.data.reviewData.message)
+  private readonly initialModel = {
+    message: this.data.reviewData.message
   }
 
+  public readonly reviewModel = signal({ ...this.initialModel })
+
+  public readonly maxReviewLength = MAX_REVIEW_LENGTH
+
+  public readonly reviewForm = form(this.reviewModel, reviewFormSchema)
+
   editReview () {
-    this.productReviewService.patch({ id: this.data.reviewData._id, message: this.editReviewControl.value }).subscribe(() => {
-      this.dialogRef.close()
-    }, (err) => {
-      console.log(err)
-      this.error = err
+    return submit(this.reviewForm, async () => {
+      try {
+        await firstValueFrom(this.productReviewService.patch({ id: this.data.reviewData._id, message: this.reviewModel().message }))
+        this.dialogRef.close()
+        this.snackBarHelperService.open('CONFIRM_CHANGES_SAVED')
+      } catch (err: any) {
+        console.log(err)
+      }
     })
-    this.snackBarHelperService.open('CONFIRM_CHANGES_SAVED')
   }
 }

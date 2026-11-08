@@ -1,106 +1,117 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import { FormControl, Validators } from '@angular/forms'
-import { Component, OnInit } from '@angular/core'
-import { FormSubmitService } from '../Services/form-submit.service'
+import { Component, type OnInit, DestroyRef, inject, signal, ChangeDetectionStrategy } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { form, FormField, FormRoot } from '@angular/forms/signals'
+import { catchError, EMPTY, firstValueFrom, of, switchMap } from 'rxjs'
+import { addressFormSchema, type AddressFormModel, MAX_MOBILE_NUMBER, MAX_STREET_ADDRESS_LENGTH, MAX_ZIP_CODE_LENGTH, MIN_MOBILE_NUMBER } from '../Models/address-form.schema'
 import { AddressService } from '../Services/address.service'
-import { ActivatedRoute, ParamMap, Router } from '@angular/router'
+import { ActivatedRoute, type ParamMap, Router } from '@angular/router'
 import { Location } from '@angular/common'
-import { TranslateService } from '@ngx-translate/core'
+import { TranslateService, TranslateModule } from '@ngx-translate/core'
 import { SnackBarHelperService } from '../Services/snack-bar-helper.service'
+import { MatIconModule } from '@angular/material/icon'
+import { MatButtonModule } from '@angular/material/button'
+import { MatInputModule } from '@angular/material/input'
+import { MatFormFieldModule, MatLabel, MatError, MatHint } from '@angular/material/form-field'
+import { MatCardModule } from '@angular/material/card'
 
 @Component({
+  changeDetection: ChangeDetectionStrategy.Eager,
   selector: 'app-address-create',
   templateUrl: './address-create.component.html',
-  styleUrls: ['./address-create.component.scss']
+  styleUrls: ['./address-create.component.scss'],
+  imports: [MatCardModule, TranslateModule, MatFormFieldModule, MatLabel, MatInputModule, FormRoot, FormField, MatError, MatHint, MatButtonModule, MatIconModule]
 })
 export class AddressCreateComponent implements OnInit {
-  public countryControl: FormControl = new FormControl('', [Validators.required])
-  public nameControl: FormControl = new FormControl('', [Validators.required])
-  public numberControl: FormControl = new FormControl('', [Validators.required, Validators.min(1111111), Validators.max(9999999999)])
-  public pinControl: FormControl = new FormControl('', [Validators.required, Validators.maxLength(8)])
-  public addressControl: FormControl = new FormControl('', [Validators.required, Validators.maxLength(160)])
-  public cityControl: FormControl = new FormControl('', [Validators.required])
-  public stateControl: FormControl = new FormControl()
-  public address: any = undefined
+  private readonly location = inject(Location)
+  private readonly addressService = inject(AddressService)
+  private readonly router = inject(Router)
+  activatedRoute = inject(ActivatedRoute)
+  private readonly translate = inject(TranslateService)
+  private readonly snackBarHelperService = inject(SnackBarHelperService)
+  private readonly destroyRef = inject(DestroyRef)
+
+  public readonly maxZipCodeLength = MAX_ZIP_CODE_LENGTH
+  public readonly maxStreetAddressLength = MAX_STREET_ADDRESS_LENGTH
+  public readonly mobileNumberRange = `${MIN_MOBILE_NUMBER}-${MAX_MOBILE_NUMBER}`
+
+  private readonly initialModel: AddressFormModel = {
+    country: '',
+    fullName: '',
+    mobileNum: null,
+    zipCode: '',
+    streetAddress: '',
+    city: '',
+    state: ''
+  }
+
+  public readonly addressModel = signal<AddressFormModel>({ ...this.initialModel })
+
+  public readonly addressForm = form(this.addressModel, addressFormSchema, {
+    submission: {
+      action: () => this.save()
+    }
+  })
+
   public mode = 'create'
   private addressId: string = undefined
 
-  constructor (private readonly location: Location, private readonly formSubmitService: FormSubmitService,
-    private readonly addressService: AddressService, private readonly router: Router, public activatedRoute: ActivatedRoute,
-    private readonly translate: TranslateService, private readonly snackBarHelperService: SnackBarHelperService) { }
-
-  ngOnInit () {
-    this.address = {}
-    this.activatedRoute.paramMap.subscribe((paramMap: ParamMap) => {
-      if (paramMap.has('addressId')) {
-        this.mode = 'edit'
-        this.addressId = paramMap.get('addressId')
-        this.addressService.getById(this.addressId).subscribe((address) => {
+  ngOnInit (): void {
+    this.activatedRoute.paramMap
+      .pipe(
+        switchMap((paramMap: ParamMap) => {
+          if (!paramMap.has('addressId')) {
+            this.mode = 'create'
+            this.addressId = null
+            return of(null)
+          }
+          this.mode = 'edit'
+          this.addressId = paramMap.get('addressId')
+          return this.addressService.getById(this.addressId).pipe(
+            catchError((err) => {
+              console.log(err)
+              return EMPTY
+            })
+          )
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((address) => {
+        if (address) {
           this.initializeForm(address)
-        })
-      } else {
-        this.mode = 'create'
-        this.addressId = null
-      }
-    })
-    this.formSubmitService.attachEnterKeyHandler('address-form', 'submitButton', () => this.save())
+        }
+      })
   }
 
-  save () {
-    this.address.country = this.countryControl.value
-    this.address.fullName = this.nameControl.value
-    this.address.mobileNum = this.numberControl.value
-    this.address.zipCode = this.pinControl.value
-    this.address.streetAddress = this.addressControl.value
-    this.address.city = this.cityControl.value
-    this.address.state = this.stateControl.value
-    if (this.mode === 'edit') {
-      this.addressService.put(this.addressId, this.address).subscribe((savedAddress) => {
-        this.address = {}
-        this.ngOnInit()
-        this.resetForm()
-        this.routeToPreviousUrl()
-        this.translate.get('ADDRESS_UPDATED', { city: savedAddress.city }).subscribe((addressUpdated) => {
-          this.snackBarHelperService.open(addressUpdated, 'confirmBar')
-        }, (translationId) => {
-          this.snackBarHelperService.open(translationId, 'confirmBar')
-        })
-      }, (err) => {
-        this.snackBarHelperService.open(err.error?.error, 'errorBar')
-        this.address = {}
-        this.resetForm()
-      })
-    } else {
-      this.addressService.save(this.address).subscribe((savedAddress) => {
-        this.address = {}
-        this.ngOnInit()
-        this.resetForm()
-        this.routeToPreviousUrl()
-        this.translate.get('ADDRESS_ADDED', { city: savedAddress.city }).subscribe((addressAdded) => {
-          this.snackBarHelperService.open(addressAdded, 'confirmBar')
-        }, (translationId) => {
-          this.snackBarHelperService.open(translationId, 'confirmBar')
-        })
-      }, (err) => {
-        this.snackBarHelperService.open(err.error?.error, 'errorBar')
-        this.address = {}
-        this.resetForm()
-      })
+  async save () {
+    const address = { ...this.addressModel() }
+    const confirmationKey = this.mode === 'edit' ? 'ADDRESS_UPDATED' : 'ADDRESS_ADDED'
+    try {
+      const savedAddress = this.mode === 'edit'
+        ? await firstValueFrom(this.addressService.put(this.addressId, address))
+        : await firstValueFrom(this.addressService.save(address))
+      this.resetForm()
+      this.routeToPreviousUrl()
+      this.snackBarHelperService.open(await this.confirmationMessage(confirmationKey, savedAddress?.city), 'confirmBar')
+    } catch (err: any) {
+      this.snackBarHelperService.open(err.error?.error, 'errorBar')
     }
   }
 
   initializeForm (address) {
-    this.countryControl.setValue(address.country)
-    this.nameControl.setValue(address.fullName)
-    this.numberControl.setValue(address.mobileNum)
-    this.pinControl.setValue(address.zipCode)
-    this.addressControl.setValue(address.streetAddress)
-    this.cityControl.setValue(address.city)
-    this.stateControl.setValue(address.state)
+    this.addressModel.set({
+      country: address.country ?? '',
+      fullName: address.fullName ?? '',
+      mobileNum: address.mobileNum ?? null,
+      zipCode: address.zipCode ?? '',
+      streetAddress: address.streetAddress ?? '',
+      city: address.city ?? '',
+      state: address.state ?? ''
+    })
   }
 
   routeToPreviousUrl () {
@@ -108,26 +119,14 @@ export class AddressCreateComponent implements OnInit {
   }
 
   resetForm () {
-    this.countryControl.markAsUntouched()
-    this.countryControl.markAsPristine()
-    this.countryControl.setValue('')
-    this.nameControl.markAsUntouched()
-    this.nameControl.markAsPristine()
-    this.nameControl.setValue('')
-    this.numberControl.markAsUntouched()
-    this.numberControl.markAsPristine()
-    this.numberControl.setValue('')
-    this.pinControl.markAsUntouched()
-    this.pinControl.markAsPristine()
-    this.pinControl.setValue('')
-    this.addressControl.markAsUntouched()
-    this.addressControl.markAsPristine()
-    this.addressControl.setValue('')
-    this.cityControl.markAsUntouched()
-    this.cityControl.markAsPristine()
-    this.cityControl.setValue('')
-    this.stateControl.markAsUntouched()
-    this.stateControl.markAsPristine()
-    this.stateControl.setValue('')
+    this.addressForm().reset({ ...this.initialModel })
+  }
+
+  private async confirmationMessage (key: string, city: string): Promise<string> {
+    try {
+      return await firstValueFrom(this.translate.get(key, { city }))
+    } catch (translationId) {
+      return translationId as string
+    }
   }
 }

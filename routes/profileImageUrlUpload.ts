@@ -1,36 +1,48 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import fs = require('fs')
-const models = require('../models/index')
-const security = require('../lib/insecurity')
-const request = require('request')
-const logger = require('../lib/logger')
+import fs from 'node:fs'
+import { Readable } from 'node:stream'
+import { finished } from 'node:stream/promises'
+import { type Request, type Response, type NextFunction } from 'express'
 
-module.exports = function profileImageUrlUpload () {
-  return (req, res, next) => {
+import * as security from '../lib/insecurity'
+import { UserModel } from '../models/user'
+import * as utils from '../lib/utils'
+import logger from '../lib/logger'
+
+export function profileImageUrlUpload () {
+  return async (req: Request, res: Response, next: NextFunction) => {
     if (req.body.imageUrl !== undefined) {
       const url = req.body.imageUrl
       if (url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null) req.app.locals.abused_ssrf_bug = true
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
-        const imageRequest = request
-          .get(url)
-          .on('error', function (err) {
-            models.User.findByPk(loggedInUser.data.id).then(user => { return user.update({ profileImage: url }) }).catch(error => { next(error) })
-            logger.warn('Error retrieving user profile image: ' + err.message + '; using image link directly')
-          })
-          .on('response', function (res) {
-            if (res.statusCode === 200) {
-              const ext = ['jpg', 'jpeg', 'png', 'svg', 'gif'].includes(url.split('.').slice(-1)[0].toLowerCase()) ? url.split('.').slice(-1)[0].toLowerCase() : 'jpg'
-              imageRequest.pipe(fs.createWriteStream(`frontend/dist/frontend/assets/public/images/uploads/${loggedInUser.data.id}.${ext}`))
-              models.User.findByPk(loggedInUser.data.id).then(user => { return user.update({ profileImage: `/assets/public/images/uploads/${loggedInUser.data.id}.${ext}` }) }).catch(error => { next(error) })
-            } else models.User.findByPk(loggedInUser.data.id).then(user => { return user.update({ profileImage: url }) }).catch(error => { next(error) })
-          })
+        try {
+          const response = await fetch(url)
+          if (!response.ok || !response.body) {
+            throw new Error('url returned a non-OK status code or an empty body')
+          }
+          const ext = ['jpg', 'jpeg', 'png', 'svg', 'gif'].includes(url.split('.').slice(-1)[0].toLowerCase()) ? url.split('.').slice(-1)[0].toLowerCase() : 'jpg'
+          const fileStream = fs.createWriteStream(`frontend/dist/frontend/assets/public/images/uploads/${loggedInUser.data.id}.${ext}`, { flags: 'w' })
+          await finished(Readable.fromWeb(response.body as any).pipe(fileStream))
+          const user = await UserModel.findByPk(loggedInUser.data.id)
+          await user?.update({ profileImage: `/assets/public/images/uploads/${loggedInUser.data.id}.${ext}` })
+        } catch (error) {
+          try {
+            const user = await UserModel.findByPk(loggedInUser.data.id)
+            await user?.update({ profileImage: url })
+            logger.warn(`Error retrieving user profile image: ${utils.getErrorMessage(error)}; using image link directly`)
+          } catch (error) {
+            next(error)
+            return
+          }
+        }
       } else {
-        next(new Error('Blocked illegal activity by ' + req.connection.remoteAddress))
+        next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
+        return
       }
     }
     res.location(process.env.BASE_PATH + '/profile')

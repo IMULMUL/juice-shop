@@ -1,16 +1,29 @@
 /*!
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
+@use '../../styles/variables' as *;
+
 mat-card {
   height: auto;
-  min-width: 320px;
-  width: 30%;
+  min-width: 510px;
+  width: 25%;
+  padding: $space-l $space-xl;
 }
 
-#submitButton {
-  float: right;
+@media (max-width: 599.98px) {
+  mat-card {
+    width: 100%;
+    min-width: auto;
+    margin-bottom: $space-l;
+    margin-left: $space-m;
+    margin-right: $space-m;
+  }
+}
+
+mat-form-field {
+  margin-bottom: $space-m;
 }
 
 .form-container {
@@ -19,14 +32,25 @@ mat-card {
   position: relative;
 }
 
-.btn-return {
-  float: left;
+.actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: $space-m;
+}
+
+.center-container {
+  align-items: stretch;
+  display: flex;
+  justify-content: center;
+}
+
+.hint-spacing {
+  margin-left: $space-2xs;
 }
 
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
-  /* display: none; <- Crashes Chrome on hover */
   -webkit-appearance: none;
   -moz-appearance: none;
-  margin: 0; /* <-- Apparently some margin are still there even though it's hidden */
+  margin: 0;
 }

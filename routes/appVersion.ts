@@ -1,13 +1,15 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import config = require('config')
-const utils = require('../lib/utils')
+import config from 'config'
+import { type Request, type Response } from 'express'
 
-module.exports = function retrieveAppVersion () {
-  return (req, res) => {
+import * as utils from '../lib/utils'
+
+export function retrieveAppVersion () {
+  return (_req: Request, res: Response) => {
     res.json({
       version: config.get('application.showVersionNumber') ? utils.version() : ''
     })

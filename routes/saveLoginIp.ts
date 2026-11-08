@@ -1,36 +1,39 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import models = require('../models/index')
-const utils = require('../lib/utils')
-const security = require('../lib/insecurity')
-const cache = require('../data/datacache')
-const challenges = cache.challenges
+import { type Request, type Response, type NextFunction } from 'express'
 
-module.exports = function saveLoginIp () {
-  return (req, res, next) => {
+import * as challengeUtils from '../lib/challengeUtils'
+import { challenges } from '../data/datacache'
+import * as security from '../lib/insecurity'
+import { UserModel } from '../models/user'
+import * as utils from '../lib/utils'
+
+export function saveLoginIp () {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const loggedInUser = security.authenticatedUsers.from(req)
     if (loggedInUser !== undefined) {
       let lastLoginIp = req.headers['true-client-ip']
-      if (!utils.disableOnContainerEnv()) {
-        utils.solveIf(challenges.httpHeaderXssChallenge, () => { return lastLoginIp === '<iframe src="javascript:alert(`xss`)">' })
+      if (Array.isArray(lastLoginIp)) {
+        lastLoginIp = lastLoginIp[0]
+      }
+      if (utils.isChallengeEnabled(challenges.httpHeaderXssChallenge)) {
+        challengeUtils.solveIf(challenges.httpHeaderXssChallenge, () => { return lastLoginIp === '<iframe src="javascript:alert(`xss`)">' })
       } else {
-        lastLoginIp = security.sanitizeSecure(lastLoginIp)
+        lastLoginIp = security.sanitizeSecure(lastLoginIp ?? '')
       }
       if (lastLoginIp === undefined) {
-        lastLoginIp = utils.toSimpleIpAddress(req.connection.remoteAddress)
+        lastLoginIp = utils.toSimpleIpAddress(req.socket.remoteAddress ?? '')
       }
-      models.User.findByPk(loggedInUser.data.id).then(user => {
-        user.update({ lastLoginIp: lastLoginIp }).then(user => {
-          res.json(user)
-        }).catch(error => {
-          next(error)
-        })
-      }).catch(error => {
+      try {
+        const user = await UserModel.findByPk(loggedInUser.data.id)
+        const updatedUser = await user?.update({ lastLoginIp: lastLoginIp?.toString() })
+        res.json(updatedUser)
+      } catch (error) {
         next(error)
-      })
+      }
     } else {
       res.sendStatus(401)
     }

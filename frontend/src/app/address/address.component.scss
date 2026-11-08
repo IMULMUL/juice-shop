@@ -1,33 +1,92 @@
 /*!
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-.btn-new-address {
+@use '../../styles/variables' as *;
+
+:host {
   display: block;
-  margin-left: 0;
-  margin-right: auto;
 }
 
-.btn-next {
-  display: block;
-  margin-left: auto;
-  margin-right: 0;
-  margin-top: -37px;
+mat-card {
+  padding: $space-m;
 }
 
-mat-header-row {
-  min-height: 0 !important;
+:host(.page-card) {
+  min-width: 720px;
+  width: 50%;
 }
 
-.heading {
-  background: rgba(0, 0, 0, 0.2);
-  font-size: x-large;
+@media (max-width: 720px) {
+  :host(.page-card) {
+    margin-left: $space-m;
+    margin-right: $space-m;
+    min-width: 0;
+    width: 100%;
+  }
 }
 
-.heading-text {
-  justify-content: center;
-  padding: 12px 20px;
+:host(.page-card) mat-card {
+  padding: $space-l $space-xl;
+}
+
+.mat-mdc-header-row {
+  border-bottom: 1px solid var(--theme-background-light);
+}
+
+svg {
+  font-size: 12.5px;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+.address-table {
+  border-bottom: 1px solid var(--theme-background-light);
+  border-top: 1px solid var(--theme-background-light);
+  min-width: 600px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.mat-column-Name,
+.mat-column-Address,
+.mat-column-Country {
+  padding-left: 0;
+  padding-right: $space-m;
+}
+
+.mat-column-Name {
+  padding-left: $space-m;
+  white-space: nowrap;
+  width: 20%;
+}
+
+.mat-column-Country {
+  white-space: nowrap;
+  width: 15%;
+}
+
+.mat-column-Address {
+  word-break: break-word;
+}
+
+.mat-column-Selection,
+.mat-column-Edit,
+.mat-column-Remove {
+  padding: 0;
+  text-align: center;
+  width: 40px;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  gap: $space-m;
+  justify-content: space-between;
+  margin-top: $space-m;
 }
 
 .div-boundary {

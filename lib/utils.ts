@@ -1,175 +1,95 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-/* jslint node: true */
 import packageJson from '../package.json'
-import fs = require('fs')
-const colors = require('colors/safe')
-const notifications = require('../data/datacache').notifications
-const challenges = require('../data/datacache').challenges
-const sanitizeHtml = require('sanitize-html')
-const jsSHA = require('jssha')
-const Entities = require('html-entities').AllHtmlEntities
-const config = require('config')
-const entities = new Entities()
-const download = require('download')
-const crypto = require('crypto')
-const clarinet = require('clarinet')
-const isDocker = require('is-docker')
-const isHeroku = require('is-heroku')
-const isWindows = require('is-windows')
-const logger = require('./logger')
-const webhook = require('./webhook')
-const antiCheat = require('./antiCheat')
+import fs from 'node:fs'
+import http from 'node:http'
+import https from 'node:https'
+import logger from './logger'
+import config from 'config'
+import { ProxyAgent } from 'proxy-agent'
+import crypto from 'node:crypto'
+import clarinet from 'clarinet'
+import type { Challenge } from '@juice-shop/data/types'
+
+import isHeroku from './is-heroku'
+import isDocker from './is-docker'
+import isWindows from './is-windows'
+export { default as isDocker } from './is-docker'
+export { default as isWindows } from './is-windows'
 
 const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+const proxyAgent = new ProxyAgent()
 
-let ctfKey
-if (process.env.CTF_KEY !== undefined && process.env.CTF_KEY !== '') {
-  ctfKey = process.env.CTF_KEY
-} else {
-  fs.readFile('ctf.key', 'utf8', (err, data) => {
-    if (err != null) {
-      throw err
-    }
-    ctfKey = data
-  })
-}
-
-exports.queryResultToJson = (data, status) => {
-  let wrappedData = {}
-  if (data) {
-    if (!data.length && data.dataValues) {
-      wrappedData = data.dataValues
-    } else if (data.length > 0) {
-      wrappedData = []
-      for (let i = 0; i < data.length; i++) {
-        wrappedData.push(data[i]?.dataValues ? data[i].dataValues : data[i])
-      }
-    } else {
-      wrappedData = data
-    }
-  }
+export const queryResultToJson = <T>(
+  data: T,
+  status: string = 'success'
+): { data: T, status: string } => {
   return {
-    status: status || 'success',
-    data: wrappedData
+    status,
+    data
   }
 }
 
-exports.isUrl = (url) => {
-  return !!this.startsWith(url, 'http')
+export const isUrl = (url: string) => {
+  return url.startsWith('http')
 }
 
-exports.startsWith = (str, prefix) => str ? str.indexOf(prefix) === 0 : false
-
-exports.endsWith = (str, suffix) => str ? str.indexOf(suffix, str.length - suffix.length) !== -1 : false
-
-exports.contains = (str, element) => str ? str.includes(element) : false
-
-exports.containsEscaped = function (str, element) {
-  return this.contains(str, element.replace(/"/g, '\\"'))
+export const containsEscaped = function (str: string, element: string) {
+  return str ? str.includes(element.replace(/"/g, '\\"')) : false
 }
 
-exports.containsOrEscaped = function (str, element) {
-  return this.contains(str, element) || this.containsEscaped(str, element)
+export const containsOrEscaped = function (str: string, element: string) {
+  return (str ? str.includes(element) : false) || containsEscaped(str, element)
 }
 
-exports.unquote = function (str) {
-  if (str && this.startsWith(str, '"') && this.endsWith(str, '"')) {
+export const unquote = function (str: string) {
+  if (str && str.startsWith('"') && str.endsWith('"')) {
     return str.substring(1, str.length - 1)
   } else {
     return str
   }
 }
 
-exports.trunc = function (str, length) {
+export const trunc = function (str: string, length: number) {
   str = str.replace(/(\r\n|\n|\r)/gm, '')
   return (str.length > length) ? str.substr(0, length - 1) + '...' : str
 }
 
-exports.version = module => {
+export const version = (module?: string) => {
   if (module) {
+    // @ts-expect-error FIXME Ignoring any type issue on purpose
     return packageJson.dependencies[module]
   } else {
     return packageJson.version
   }
 }
 
-exports.ctfFlag = text => {
-  const shaObj = new jsSHA('SHA-1', 'TEXT') // eslint-disable-line new-cap
-  shaObj.setHMACKey(ctfKey, 'TEXT')
-  shaObj.update(text)
-  return shaObj.getHMAC('HEX')
-}
-
-exports.solveIf = function (challenge, criteria, isRestore) {
-  if (this.notSolved(challenge) && criteria()) {
-    this.solve(challenge, isRestore)
-  }
-}
-
-exports.solve = function (challenge, isRestore) {
-  challenge.solved = true
-  challenge.save().then((solvedChallenge) => {
-    solvedChallenge.description = entities.decode(sanitizeHtml(solvedChallenge.description, {
-      allowedTags: [],
-      allowedAttributes: []
-    }))
-    logger.info(`${isRestore ? colors.grey('Restored') : colors.green('Solved')} ${solvedChallenge.difficulty}-star ${colors.cyan(solvedChallenge.key)} (${solvedChallenge.name})`)
-    this.sendNotification(solvedChallenge, isRestore)
-    if (!isRestore) {
-      const cheatScore = antiCheat.calculateCheatScore(challenge)
-      if (process.env.SOLUTIONS_WEBHOOK) {
-        webhook.notify(solvedChallenge, cheatScore).catch((error) => {
-          logger.error('Webhook notification failed: ' + colors.red(error.message))
-        })
-      }
-    }
-  })
-}
-
-exports.sendNotification = function (challenge, isRestore) {
-  if (!this.notSolved(challenge)) {
-    const flag = this.ctfFlag(challenge.name)
-    const notification = {
-      key: challenge.key,
-      name: challenge.name,
-      challenge: challenge.name + ' (' + challenge.description + ')',
-      flag: flag,
-      hidden: !config.get('challenges.showSolvedNotifications'),
-      isRestore: isRestore
-    }
-    const wasPreviouslyShown = notifications.find(({ key }) => key === challenge.key) !== undefined
-    notifications.push(notification)
-
-    if (global.io && (isRestore || !wasPreviouslyShown)) {
-      global.io.emit('challenge solved', notification)
+let cachedCtfKey: string | undefined
+const getCtfKey = () => {
+  if (!cachedCtfKey) {
+    if (process.env.CTF_KEY !== undefined && process.env.CTF_KEY !== '') {
+      cachedCtfKey = process.env.CTF_KEY
+    } else {
+      const data = fs.readFileSync('ctf.key', 'utf8')
+      cachedCtfKey = data
     }
   }
+  return cachedCtfKey
+}
+export const ctfFlag = (text: string) => {
+  return crypto.createHmac('sha1', getCtfKey()).update(text).digest('hex')
 }
 
-exports.notSolved = challenge => challenge && !challenge.solved
-
-exports.findChallenge = challengeName => {
-  for (const name in challenges) {
-    if (Object.prototype.hasOwnProperty.call(challenges, name)) {
-      if (challenges[name].name === challengeName) {
-        return challenges[name]
-      }
-    }
-  }
-  logger.warn('Missing challenge with name: ' + challengeName)
-}
-
-exports.toMMMYY = date => {
+export const toMMMYY = (date: Date) => {
   const month = date.getMonth()
   const year = date.getFullYear()
   return months[month] + year.toString().substring(2, 4)
 }
 
-exports.toISO8601 = date => {
+export const toISO8601 = (date: Date) => {
   let day = '' + date.getDate()
   let month = '' + (date.getMonth() + 1)
   const year = date.getFullYear()
@@ -180,23 +100,67 @@ exports.toISO8601 = date => {
   return [year, month, day].join('-')
 }
 
-exports.extractFilename = (url) => {
+export const extractFilename = (url: string) => {
   let file = decodeURIComponent(url.substring(url.lastIndexOf('/') + 1))
-  if (this.contains(file, '?')) {
+  if (file ? file.includes('?') : false) {
     file = file.substring(0, file.indexOf('?'))
   }
   return file
 }
 
-exports.downloadToFile = async (url, dest) => {
-  return download(url).then(data => {
-    fs.writeFileSync(dest, data)
-  }).catch(err => {
-    logger.warn('Failed to download ' + url + ' (' + err.statusMessage + ')')
+interface DownloadOptions {
+  agent?: http.Agent
+}
+
+const download = async (url: string, options: DownloadOptions, redirectsLeft = 10): Promise<Buffer> => {
+  return await new Promise((resolve, reject) => {
+    const client = url.startsWith('https:') ? https : http
+    client.get(url, { agent: options.agent }, (res) => {
+      const status = res.statusCode ?? 0
+      if (status >= 300 && status < 400 && res.headers.location) {
+        res.resume()
+        if (redirectsLeft > 0) {
+          download(new URL(res.headers.location, url).toString(), options, redirectsLeft - 1).then(resolve, reject)
+        } else {
+          reject(new Error('Too many redirects'))
+        }
+      } else if (status < 200 || status >= 300) {
+        res.resume()
+        reject(new Error(`Response code ${status}`))
+      } else {
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('end', () => resolve(Buffer.concat(chunks)))
+        res.on('error', reject)
+      }
+    }).on('error', reject)
   })
 }
 
-exports.jwtFrom = ({ headers }) => {
+export const replaceInFile = (file: string, regex: string | RegExp, replacement: string) => {
+  const content = fs.readFileSync(file, 'utf8')
+  const replaced = content.replace(new RegExp(regex, 'gm'), replacement)
+  if (replaced !== content) {
+    fs.writeFileSync(file, replaced)
+  }
+}
+
+export const downloadToFile = async (
+  url: string,
+  dest: string,
+  downloadData: (url: string, options: DownloadOptions) => Promise<Buffer> = download
+) => {
+  try {
+    const data = await downloadData(url, { agent: proxyAgent })
+    fs.writeFileSync(dest, data)
+    return true
+  } catch (err) {
+    logger.warn('Failed to download ' + url + ' (' + getErrorMessage(err) + ')')
+    return false
+  }
+}
+
+export const jwtFrom = ({ headers }: { headers: any }) => {
   if (headers?.authorization) {
     const parts = headers.authorization.split(' ')
     if (parts.length === 2) {
@@ -211,44 +175,70 @@ exports.jwtFrom = ({ headers }) => {
   return undefined
 }
 
-exports.randomHexString = (length) => {
+export const randomHexString = (length: number): string => {
   return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length)
 }
 
-exports.disableOnContainerEnv = () => {
-  return (isDocker() || isHeroku) && !config.get('challenges.safetyOverride')
+export interface ChallengeEnablementStatus {
+  enabled: boolean
+  disabledBecause: string | null
 }
 
-exports.disableOnWindowsEnv = () => {
-  return isWindows()
-}
+type SafetyModeSetting = 'enabled' | 'disabled' | 'auto'
 
-exports.determineDisabledEnv = (disabledEnv) => {
-  if (isDocker()) {
-    return disabledEnv && (disabledEnv === 'Docker' || disabledEnv.includes('Docker')) ? 'Docker' : null
-  } else if (isHeroku) {
-    return disabledEnv && (disabledEnv === 'Heroku' || disabledEnv.includes('Heroku')) ? 'Heroku' : null
-  } else if (isWindows()) {
-    return disabledEnv && (disabledEnv === 'Windows' || disabledEnv.includes('Windows')) ? 'Windows' : null
+type isEnvironmentFunction = () => boolean
+
+export function getChallengeEnablementStatus (challenge: Challenge,
+  safetyModeSetting: SafetyModeSetting = config.get<SafetyModeSetting>('challenges.safetyMode'),
+  isEnvironmentFunctions: {
+    isDocker: isEnvironmentFunction
+    isHeroku: isEnvironmentFunction
+    isWindows: isEnvironmentFunction
+  } = { isDocker, isHeroku, isWindows }): ChallengeEnablementStatus {
+  if (!challenge?.disabledEnv) {
+    return { enabled: true, disabledBecause: null }
   }
-  return null
+
+  if (safetyModeSetting === 'disabled') {
+    return { enabled: true, disabledBecause: null }
+  }
+
+  if (challenge.disabledEnv?.includes('Docker') && isEnvironmentFunctions.isDocker()) {
+    return { enabled: false, disabledBecause: 'Docker' }
+  }
+  if (challenge.disabledEnv?.includes('Heroku') && isEnvironmentFunctions.isHeroku()) {
+    return { enabled: false, disabledBecause: 'Heroku' }
+  }
+  if (challenge.disabledEnv?.includes('Windows') && isEnvironmentFunctions.isWindows()) {
+    return { enabled: false, disabledBecause: 'Windows' }
+  }
+  if (challenge.disabledEnv && safetyModeSetting === 'enabled') {
+    return { enabled: false, disabledBecause: 'Safety Mode' }
+  }
+
+  return { enabled: true, disabledBecause: null }
+}
+export function isChallengeEnabled (challenge: Challenge): boolean {
+  const { enabled } = getChallengeEnablementStatus(challenge)
+  return enabled
 }
 
-exports.parseJsonCustom = (jsonString) => {
+export const parseJsonCustom = (jsonString: string) => {
   const parser = clarinet.parser()
-  const result = []
-  parser.onkey = parser.onopenobject = k => {
+  const result: any[] = []
+  parser.onkey = parser.onopenobject = (k: any) => {
     result.push({ key: k, value: null })
   }
-  parser.onvalue = v => {
+  parser.onvalue = (v: any) => {
     result[result.length - 1].value = v
   }
-  parser.write(jsonString).close()
+  parser.write(jsonString)
+  parser.close()
   return result
 }
 
-exports.toSimpleIpAddress = (ipv6) => {
-  if (this.startsWith(ipv6, '::ffff:')) {
+export const toSimpleIpAddress = (ipv6: string) => {
+  if (ipv6?.startsWith('::ffff:')) {
     return ipv6.substr(7)
   } else if (ipv6 === '::1') {
     return '127.0.0.1'
@@ -257,6 +247,48 @@ exports.toSimpleIpAddress = (ipv6) => {
   }
 }
 
-exports.thaw = (frozenObject) => {
-  return JSON.parse(JSON.stringify(frozenObject))
+export const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
+export const matchesSystemIniFile = (text: string) => {
+  const match = text.match(/; for 16-bit app support/gi)
+  return match !== null && match.length >= 1
+}
+
+export const matchesEtcPasswdFile = (text: string) => {
+  const match = text.match(/(\w*:\w*:\d*:\d*:\w*:.*)|(Note that this file is consulted directly)/gi)
+  return match !== null && match.length >= 1
+}
+
+export function diceCoefficient (s1: string, s2: string, n = 2): number {
+  if (s1 === s2) return 1
+  if (s1.length < n || s2.length < n) return 0
+
+  const nGrams1 = new Map<string, number>()
+  for (let i = 0; i <= s1.length - n; i++) {
+    const nGram = s1.substring(i, i + n)
+    nGrams1.set(nGram, (nGrams1.get(nGram) ?? 0) + 1)
+  }
+
+  let intersectionSize = 0
+  for (let i = 0; i <= s2.length - n; i++) {
+    const nGram = s2.substring(i, i + n)
+    const count = nGrams1.get(nGram) ?? 0
+    if (count > 0) {
+      nGrams1.set(nGram, count - 1)
+      intersectionSize++
+    }
+  }
+
+  return (2.0 * intersectionSize) / (s1.length + s2.length - 2 * (n - 1))
+}
+
+/**
+ * Wrapper for asynchronous Express route handlers to ensure any rejected promises are caught and passed to the next() function.
+ * TODO: Revisit the need for this wrapper once the project is migrated to Express 5 which supports async handlers natively.
+ */
+export const asyncHandler = (fn: (req: any, res: any, next: any) => Promise<any> | any) => (req: any, res: any, next: any) => {
+  void Promise.resolve(fn(req, res, next)).catch(next)
 }

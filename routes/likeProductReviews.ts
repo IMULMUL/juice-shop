@@ -1,58 +1,62 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import utils = require('../lib/utils')
-const challenges = require('../data/datacache').challenges
-const db = require('../data/mongodb')
-const security = require('../lib/insecurity')
+import { type Request, type Response, type NextFunction } from 'express'
 
-module.exports = function productReviews () {
-  return (req, res, next) => {
+import * as challengeUtils from '../lib/challengeUtils'
+import { challenges } from '../data/datacache'
+import * as security from '../lib/insecurity'
+import { type Review } from '../data/types'
+import * as db from '../data/mongodb'
+
+const sleep = async (ms: number) => await new Promise(resolve => setTimeout(resolve, ms))
+
+export function likeProductReviews () {
+  return async (req: Request, res: Response, next: NextFunction) => {
     const id = req.body.id
     const user = security.authenticatedUsers.from(req)
-    db.reviews.findOne({ _id: id }).then(review => {
-      const likedBy = review.likedBy
-      if (!likedBy.includes(user.data.email)) {
-        db.reviews.update(
-          { _id: id },
-          { $inc: { likesCount: 1 } }
-        ).then(
-          result => {
-            // Artificial wait for timing attack challenge
-            setTimeout(function () {
-              db.reviews.findOne({ _id: id }).then(review => {
-                const likedBy = review.likedBy
-                likedBy.push(user.data.email)
-                let count = 0
-                for (let i = 0; i < likedBy.length; i++) {
-                  if (likedBy[i] === user.data.email) {
-                    count++
-                  }
-                }
-                utils.solveIf(challenges.timingAttackChallenge, () => { return count > 2 })
-                db.reviews.update(
-                  { _id: id },
-                  { $set: { likedBy: likedBy } }
-                ).then(
-                  result => {
-                    res.json(result)
-                  }, err => {
-                    res.status(500).json(err)
-                  })
-              }, () => {
-                res.status(400).json({ error: 'Wrong Params' })
-              })
-            }, 150)
-          }, err => {
-            res.status(500).json(err)
-          })
-      } else {
-        res.status(403).json({ error: 'Not allowed' })
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+
+    try {
+      const review = await db.reviewsCollection.findOne({ _id: id })
+      if (!review) {
+        return res.status(404).json({ error: 'Not found' })
       }
-    }, () => {
+
+      const likedBy = review.likedBy
+      if (likedBy.includes(user.data.email)) {
+        return res.status(403).json({ error: 'Not allowed' })
+      }
+
+      await db.reviewsCollection.update(
+        { _id: id },
+        { $inc: { likesCount: 1 } }
+      )
+
+      // Artificial wait for timing attack challenge
+      await sleep(150)
+      try {
+        const updatedReview: Review = await db.reviewsCollection.findOne({ _id: id })
+        const updatedLikedBy = updatedReview.likedBy
+        updatedLikedBy.push(user.data.email)
+
+        const count = updatedLikedBy.filter(email => email === user.data.email).length
+        challengeUtils.solveIf(challenges.timingAttackChallenge, () => count > 2)
+
+        const result = await db.reviewsCollection.update(
+          { _id: id },
+          { $set: { likedBy: updatedLikedBy } }
+        )
+        res.json(result)
+      } catch (err) {
+        res.status(500).json(err)
+      }
+    } catch (err) {
       res.status(400).json({ error: 'Wrong Params' })
-    })
+    }
   }
 }

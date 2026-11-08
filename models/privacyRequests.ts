@@ -1,18 +1,46 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-/* jslint node: true */
-export = (sequelize, { INTEGER, BOOLEAN }) => {
-  const PrivacyRequest = sequelize.define('PrivacyRequest', {
-    UserId: { type: INTEGER },
-    deletionRequested: { type: BOOLEAN, defaultValue: false }
-  })
+import {
+  Model,
+  type InferAttributes,
+  type InferCreationAttributes,
+  DataTypes,
+  type CreationOptional,
+  type Sequelize
+} from 'sequelize'
 
-  PrivacyRequest.associate = ({ User }) => {
-    PrivacyRequest.belongsTo(User, { constraints: true, foreignKeyConstraint: true })
-  }
-
-  return PrivacyRequest
+class PrivacyRequestModel extends Model<
+InferAttributes<PrivacyRequestModel>,
+InferCreationAttributes<PrivacyRequestModel>
+> {
+  declare id: CreationOptional<number>
+  declare UserId: number
+  declare deletionRequested: boolean
 }
+const PrivacyRequestModelInit = (sequelize: Sequelize) => {
+  PrivacyRequestModel.init(
+    {
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      UserId: {
+        type: DataTypes.INTEGER
+      },
+      deletionRequested: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+      }
+    },
+    {
+      tableName: 'PrivacyRequests',
+      sequelize
+    }
+  )
+}
+
+export { PrivacyRequestModel, PrivacyRequestModelInit }

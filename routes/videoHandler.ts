@@ -1,17 +1,22 @@
 /*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
+ * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
 
-import fs = require('fs')
-const pug = require('pug')
-const config = require('config')
-const challenges = require('../data/datacache').challenges
-const utils = require('../lib/utils')
-const themes = require('../views/themes/themes').themes
+import fs from 'node:fs'
+import config from 'config'
+import { type Request, type Response } from 'express'
+import { AllHtmlEntities as Entities } from 'html-entities'
 
-exports.getVideo = () => {
-  return (req, res) => {
+import * as challengeUtils from '../lib/challengeUtils'
+import { themes } from '../views/themes/themes'
+import { challenges } from '../data/datacache'
+import * as utils from '../lib/utils'
+
+const entities = new Entities()
+
+export const getVideo = () => {
+  return (req: Request, res: Response) => {
     const path = videoPath()
     const stat = fs.statSync(path)
     const fileSize = stat.size
@@ -42,23 +47,25 @@ exports.getVideo = () => {
   }
 }
 
-exports.promotionVideo = () => {
-  return (req, res) => {
-    fs.readFile('views/promotionVideo.pug', function (err, buf) {
+export const promotionVideo = () => {
+  return (req: Request, res: Response) => {
+    fs.readFile('views/promotionVideo.pug', async function (err, buf) {
       if (err != null) throw err
       let template = buf.toString()
       const subs = getSubsFromFile()
 
-      utils.solveIf(challenges.videoXssChallenge, () => { return utils.contains(subs, '</script><script>alert(`xss`)</script>') })
+      challengeUtils.solveIf(challenges.videoXssChallenge, () => { return subs.includes('</script><script>alert(`xss`)</script>') })
 
-      const theme = themes[config.get('application.theme')]
-      template = template.replace(/_title_/g, config.get('application.name'))
+      const themeKey = config.get<string>('application.theme') as keyof typeof themes
+      const theme = themes[themeKey] || themes['bluegrey-lightgreen']
+      template = template.replace(/_title_/g, entities.encode(config.get<string>('application.name')))
       template = template.replace(/_favicon_/g, favicon())
       template = template.replace(/_bgColor_/g, theme.bgColor)
       template = template.replace(/_textColor_/g, theme.textColor)
       template = template.replace(/_navColor_/g, theme.navColor)
       template = template.replace(/_primLight_/g, theme.primLight)
       template = template.replace(/_primDark_/g, theme.primDark)
+      const pug = (await import('pug')).default
       const fn = pug.compile(template)
       let compiledTemplate = fn()
       compiledTemplate = compiledTemplate.replace('<script id="subtitle"></script>', '<script id="subtitle" type="text/vtt" data-label="English" data-lang="en">' + subs + '</script>')
@@ -71,18 +78,15 @@ exports.promotionVideo = () => {
 }
 
 function getSubsFromFile () {
-  let subtitles = 'owasp_promo.vtt'
-  if (config?.application?.promotion?.subtitles !== null) {
-    subtitles = utils.extractFilename(config.application.promotion.subtitles)
-  }
+  const subtitles = config.get<string>('application.promotion.subtitles') ?? 'owasp_promo.vtt'
   const data = fs.readFileSync('frontend/dist/frontend/assets/public/videos/' + subtitles, 'utf8')
   return data.toString()
 }
 
 function videoPath () {
-  if (config?.application?.promotion?.video !== null) {
-    const video = utils.extractFilename(config.application.promotion.video)
-    return 'frontend/src/assets/public/videos/' + video
+  if (config.get<string>('application.promotion.video') !== null) {
+    const video = utils.extractFilename(config.get<string>('application.promotion.video'))
+    return 'frontend/dist/frontend/assets/public/videos/' + video
   }
-  return 'frontend/src/assets/public/videos/owasp_promo.mp4'
+  return 'frontend/dist/frontend/assets/public/videos/owasp_promo.mp4'
 }

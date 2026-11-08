@@ -1,302 +1,327 @@
-/*
- * Copyright (c) 2014-2021 Bjoern Kimminich.
- * SPDX-License-Identifier: MIT
- */
-
-import { TranslateModule, TranslateService } from '@ngx-translate/core'
-
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { ChallengeService } from '../Services/challenge.service'
-import { ConfigurationService } from '../Services/configuration.service'
-import { HttpClientTestingModule } from '@angular/common/http/testing'
-import { MatExpansionModule } from '@angular/material/expansion'
-import { MatProgressBarModule } from '@angular/material/progress-bar'
-import { MatDividerModule } from '@angular/material/divider'
-import { MatButtonModule } from '@angular/material/button'
-import { MatTableModule } from '@angular/material/table'
-import { MatCardModule } from '@angular/material/card'
-import { MatTooltipModule } from '@angular/material/tooltip'
-import { MatButtonToggleModule } from '@angular/material/button-toggle'
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
+import { provideHttpClientTesting } from '@angular/common/http/testing'
+import { type ComponentFixture, TestBed } from '@angular/core/testing'
+import { RouterTestingModule } from '@angular/router/testing'
 import { MatIconModule } from '@angular/material/icon'
-import { NgxSpinnerModule } from 'ngx-spinner'
-import { ComponentFixture, fakeAsync, TestBed, waitForAsync } from '@angular/core/testing'
-import { ScoreBoardComponent } from './score-board.component'
+import { TranslateModule } from '@ngx-translate/core'
 import { of, throwError } from 'rxjs'
-import { DomSanitizer } from '@angular/platform-browser'
-import { EventEmitter } from '@angular/core'
-import { SocketIoService } from '../Services/socket-io.service'
-import { ChallengeStatusBadgeComponent } from '../challenge-status-badge/challenge-status-badge.component'
-import { MatSnackBarModule } from '@angular/material/snack-bar'
-import { MatChipsModule } from '@angular/material/chips'
-import { MatDialogModule } from '@angular/material/dialog'
-import { CodeSnippetService } from '../Services/code-snippet.service'
-import { LocalBackupService } from '../Services/local-backup.service'
 
-class MockSocket {
-  on (str: string, callback: Function) {
-    callback(str)
-  }
+import { HackingChallengeProgressScoreCardComponent } from './components/hacking-challenge-progress-score-card/hacking-challenge-progress-score-card.component'
+import { CodingChallengeProgressScoreCardComponent } from './components/coding-challenge-progress-score-card/coding-challenge-progress-score-card.component'
+import { ChallengesUnavailableWarningComponent } from './components/challenges-unavailable-warning/challenges-unavailable-warning.component'
+import { DifficultyOverviewScoreCardComponent } from './components/difficulty-overview-score-card/difficulty-overview-score-card.component'
+import { TutorialModeWarningComponent } from './components/tutorial-mode-warning/tutorial-mode-warning.component'
+import { WarningCardComponent } from './components/warning-card/warning-card.component'
+import { ScoreCardComponent } from './components/score-card/score-card.component'
+import { ScoreBoardComponent } from './score-board.component'
+import { ConfigurationService } from '../Services/configuration.service'
+import { ChallengeService } from '../Services/challenge.service'
+import { type Challenge } from '../Models/challenge.model'
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+import { HintService } from '../Services/hint.service'
+import { SocketIoService } from '../Services/socket-io.service'
+import { Router } from '@angular/router'
+
+// allows to easily create a challenge with some overwrites
+function createChallenge(challengeOverwrites: Partial<Challenge>): Challenge {
+    return {
+        name: 'foobar',
+        key: 'challenge-1',
+        category: 'category-blue',
+        difficulty: 3,
+        description: '',
+        tags: '',
+        disabledEnv: null,
+        solved: false,
+        tutorialOrder: null,
+        hasTutorial: false,
+        hasSnippet: false,
+        codingChallengeStatus: 0,
+        mitigationUrl: '',
+        hasCodingChallenge: false,
+        ...challengeOverwrites
+    }
 }
 
 describe('ScoreBoardComponent', () => {
-  let component: ScoreBoardComponent
-  let fixture: ComponentFixture<ScoreBoardComponent>
-  let challengeService: any
-  let configurationService: any
-  let localBackupService: any
-  let translateService: any
-  let codeSnippetService: any
-  let sanitizer: any
-  let socketIoService: any
-  let mockSocket: any
+    let component: ScoreBoardComponent
+    let fixture: ComponentFixture<ScoreBoardComponent>
+    let challengeService
+    let hintService
+    let configService
+    let socket
 
-  beforeEach(waitForAsync(() => {
-    challengeService = jasmine.createSpyObj('ChallengeService', ['find'])
-    challengeService.find.and.returnValue(of([{}]))
-    configurationService = jasmine.createSpyObj('ConfigurationService', ['getApplicationConfiguration'])
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: {} }))
-    translateService = jasmine.createSpyObj('TranslateService', ['get'])
-    translateService.get.and.returnValue(of({}))
-    translateService.onLangChange = new EventEmitter()
-    translateService.onTranslationChange = new EventEmitter()
-    translateService.onDefaultLangChange = new EventEmitter()
-    codeSnippetService = jasmine.createSpyObj('CodeSnippetService', ['challenges'])
-    codeSnippetService.challenges.and.returnValue(of([]))
-    sanitizer = jasmine.createSpyObj('DomSanitizer', ['bypassSecurityTrustHtml', 'sanitize'])
-    sanitizer.bypassSecurityTrustHtml.and.callFake((args: any) => args)
-    sanitizer.sanitize.and.returnValue({})
-    mockSocket = new MockSocket()
-    socketIoService = jasmine.createSpyObj('SocketIoService', ['socket'])
-    socketIoService.socket.and.returnValue(mockSocket)
+    beforeEach(async () => {
+        challengeService = {
+            find: vi.fn().mockName("ChallengeService.find")
+        }
+        hintService = {
+            getAll: vi.fn().mockName("HintService.getAll"),
+            put: vi.fn().mockName("HintService.put")
+        }
+        configService = {
+            getApplicationConfiguration: vi.fn().mockName("ConfigurationService.getApplicationConfiguration")
+        }
+        socket = { on: vi.fn(), off: vi.fn() }
+        await TestBed.configureTestingModule({
+            imports: [TranslateModule.forRoot(),
+                RouterTestingModule,
+                MatProgressSpinnerModule,
+                MatIconModule,
+                ScoreBoardComponent,
+                HackingChallengeProgressScoreCardComponent,
+                CodingChallengeProgressScoreCardComponent,
+                DifficultyOverviewScoreCardComponent,
+                WarningCardComponent,
+                ChallengesUnavailableWarningComponent,
+                TutorialModeWarningComponent,
+                ScoreCardComponent],
+            providers: [
+                { provide: ChallengeService, useValue: challengeService },
+                { provide: HintService, useValue: hintService },
+                { provide: ConfigurationService, useValue: configService },
+                { provide: SocketIoService, useValue: { socket: () => socket } },
+                provideHttpClient(withInterceptorsFromDi()),
+                provideHttpClientTesting()
+            ]
+        }).compileComponents()
 
-    TestBed.configureTestingModule({
-      imports: [
-        HttpClientTestingModule,
-        TranslateModule.forRoot(),
+        challengeService.find.mockReturnValue(of([
+            createChallenge({
+                name: 'Challenge 1',
+                key: 'challenge-1',
+                category: 'category-blue',
+                difficulty: 1,
+                solved: true
+            }),
+            createChallenge({
+                name: 'Challenge 2',
+                key: 'challenge-2',
+                category: 'category-blue',
+                difficulty: 5,
+                solved: false,
+                hasSnippet: true,
+                codingChallengeStatus: 1
+            }),
+            createChallenge({
+                name: 'Challenge 3',
+                key: 'challenge-3',
+                category: 'category-red',
+                difficulty: 3,
+                hasSnippet: true,
+                solved: false
+            })
+        ]))
 
-        BrowserAnimationsModule,
-        NgxSpinnerModule,
-        MatCardModule,
-        MatTableModule,
-        MatButtonModule,
-        MatDividerModule,
-        MatProgressBarModule,
-        MatExpansionModule,
-        MatTooltipModule,
-        MatButtonToggleModule,
-        MatIconModule,
-        MatSnackBarModule,
-        MatChipsModule,
-        MatDialogModule
-      ],
-      declarations: [ScoreBoardComponent, ChallengeStatusBadgeComponent],
-      providers: [
-        { provide: TranslateService, useValue: translateService },
-        { provide: ChallengeService, useValue: challengeService },
-        { provide: CodeSnippetService, useValue: codeSnippetService },
-        { provide: ConfigurationService, useValue: configurationService },
-        { provide: DomSanitizer, useValue: sanitizer },
-        { provide: LocalBackupService, useValue: localBackupService },
-        { provide: SocketIoService, useValue: socketIoService }
-      ]
+        hintService.getAll.mockReturnValue(of([]))
+
+        configService.getApplicationConfiguration.mockReturnValue(of({
+            challenges: {
+                restrictToTutorialsFirst: false,
+                codingChallengesEnabled: 'solved',
+                showHints: true,
+                showMitigations: true
+            },
+            ctf: {
+                showFlagsInNotifications: true
+            },
+            hackingInstructor: {
+                isEnabled: true
+            }
+        }))
+
+        fixture = TestBed.createComponent(ScoreBoardComponent)
+        component = fixture.componentInstance
+        fixture.detectChanges()
     })
-      .compileComponents()
-  }))
 
-  beforeEach(() => {
-    fixture = TestBed.createComponent(ScoreBoardComponent)
-    component = fixture.componentInstance
-    fixture.detectChanges()
-  })
+    it('should not filter any challenges on default settings', (): void => {
+        expect(component.filteredChallenges).toHaveLength(3)
+    })
 
-  it('should create', () => {
-    expect(component).toBeTruthy()
-  })
+    it('should render the loading spinner while challenges are initializing', () => {
+        component.isInitialized = false
+        fixture.detectChanges()
 
-  it('should hold existing challenges', () => {
-    challengeService.find.and.returnValue(of([{ description: 'XSS' }, { description: 'XXE' }]))
-    component.ngOnInit()
-    expect(component.challenges.length).toBe(2)
-    expect(component.challenges[0].description).toBe('XSS')
-    expect(component.challenges[1].description).toBe('XXE')
-  })
+        expect(fixture.nativeElement.querySelector('mat-spinner')).toBeTruthy()
+    })
 
-  it('should log the error on retrieving configuration', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(throwError('Error'))
-    console.log = jasmine.createSpy('log')
-    component.ngOnInit()
-    expect(console.log).toHaveBeenCalledWith('Error')
-  })
+    it('should render the empty state when filters match no challenges', () => {
+        component.filteredChallenges = []
+        fixture.detectChanges()
 
-  it('should be able to toggle the difficulty and save it in localStorage', () => {
-    component.displayedDifficulties = []
-    spyOn(localStorage, 'setItem')
-    component.toggleDifficulty(2)
-    expect(component.displayedDifficulties).toEqual([2])
-    expect(localStorage.setItem).toHaveBeenCalledWith('displayedDifficulties', JSON.stringify(component.displayedDifficulties))
-  })
+        expect(fixture.nativeElement.querySelector('.empty-challenges')).toBeTruthy()
+    })
 
-  it('should consider challenge description as trusted HTML', () => {
-    challengeService.find.and.returnValue(of([{ description: '<a src="link">Link</a>' }]))
-    component.ngOnInit()
-    expect(sanitizer.bypassSecurityTrustHtml).toHaveBeenCalledWith('<a src="link">Link</a>')
-  })
+    it('should hide filter settings when tutorials-first restriction is enabled', () => {
+        component.applicationConfiguration = {
+            ...component.applicationConfiguration,
+            challenges: {
+                ...component.applicationConfiguration?.challenges,
+                restrictToTutorialsFirst: true
+            }
+        } as any
+        fixture.detectChanges()
 
-  it('should calculate percent of challenges solved', () => {
-    challengeService.find.and.returnValue(of([{ solved: true }, { solved: true }, { solved: false }]))
-    component.ngOnInit()
-    expect(component.percentChallengesSolved).toBe('67')
-  })
+        expect(fixture.nativeElement.querySelector('filter-settings')).toBeNull()
+    })
 
-  it('should hold nothing when no challenges exists', () => {
-    challengeService.find.and.returnValue(of([]))
-    component.ngOnInit()
-    expect(component.challenges).toEqual([])
-  })
+    it('should handle error when unlocking a hint', (): void => {
+        hintService.put.mockReturnValue(throwError('Error'))
+        console.log = vi.fn()
+        component.unlockHint(123)
+        expect(console.log).toHaveBeenCalledWith('Error')
+    })
 
-  xit('should hold nothing on error from backend API and log the error', fakeAsync(() => {
-    challengeService.find.and.returnValue(throwError('Error'))
-    console.log = jasmine.createSpy('log')
-    component.ngOnInit()
-    expect(component.challenges).toEqual([])
-    expect(console.log).toHaveBeenCalledWith('Error')
-  }))
+    it('should mark challenges as solved on "challenge solved" websocket', (): void => {
+        expect(component.filteredChallenges.find((challenge) => challenge.key === 'challenge-3').solved).toBe(false)
 
-  it('should solve the score board challenge if it is solved', () => {
-    challengeService.find.and.returnValue(of([{ name: 'Score Board', solved: false }]))
-    component.ngOnInit()
-    expect(component.challenges[0].solved).toBe(true)
-  })
+        component.onChallengeSolvedWebsocket({
+            key: 'challenge-3',
+            name: '',
+            challenge: '',
+            flag: '',
+            hidden: false,
+            isRestore: false
+        })
 
-  it('should return an empty array if challenges are empty while filtering challenges by difficulty', () => {
-    component.challenges = []
-    component.populateFilteredChallengeLists()
-    expect(component.totalChallengesOfDifficulty[0]).toEqual([])
-    expect(component.totalChallengesOfDifficulty[1]).toEqual([])
-    expect(component.totalChallengesOfDifficulty[2]).toEqual([])
-    expect(component.totalChallengesOfDifficulty[3]).toEqual([])
-    expect(component.totalChallengesOfDifficulty[4]).toEqual([])
-    expect(component.totalChallengesOfDifficulty[5]).toEqual([])
-  })
+        expect(component.filteredChallenges.find((challenge) => challenge.key === 'challenge-3').solved).toBe(true)
+    })
 
-  it('should return an empty array if challenges are empty while filtering solved challenges by difficulty', () => {
-    component.challenges = []
-    component.populateFilteredChallengeLists()
-    expect(component.solvedChallengesOfDifficulty[0]).toEqual([])
-    expect(component.solvedChallengesOfDifficulty[1]).toEqual([])
-    expect(component.solvedChallengesOfDifficulty[2]).toEqual([])
-    expect(component.solvedChallengesOfDifficulty[3]).toEqual([])
-    expect(component.solvedChallengesOfDifficulty[4]).toEqual([])
-    expect(component.solvedChallengesOfDifficulty[5]).toEqual([])
-  })
+    it('should mark find it code challenges as solved on "code challenge solved" websocket', (): void => {
+        expect(component.filteredChallenges.find((challenge) => challenge.key === 'challenge-3').codingChallengeStatus).toBe(0)
 
-  it('should complete a level when all challenges of that difficulty are solved', () => {
-    challengeService.find.and.returnValue(of([{ solved: true, difficulty: 3 }, { solved: true, difficulty: 3 }, { solved: true, difficulty: 3 }, { solved: true, difficulty: 3 }]))
-    component.ngOnInit()
-    expect(component.offsetValue[2]).toBe('0%')
-  })
+        component.onCodeChallengeSolvedWebsocket({
+            key: 'challenge-3',
+            codingChallengeStatus: 1
+        })
 
-  it('should update the correct challenge when a challenge solved event occurs', () => {
-    challengeService.find.and.returnValue(of([{ name: 'Challenge #1', solved: false }, { name: 'Challenge #2', solved: false }]))
-    spyOn(mockSocket, 'on')
-    component.ngOnInit()
-    const triggerChallengeSolvedEvent = mockSocket.on.calls.argsFor(0)[1]
-    triggerChallengeSolvedEvent({ challenge: 'ping', name: 'Challenge #1' })
-    expect(component.challenges[0].solved).toBe(true)
-    expect(component.challenges[1].solved).toBe(false)
-  })
+        expect(component.filteredChallenges.find((challenge) => challenge.key === 'challenge-3').codingChallengeStatus).toBe(1)
+    })
 
-  it('should not update when a challenge solved event to a nonexistent challenge occurs', () => {
-    challengeService.find.and.returnValue(of([{ name: 'Challenge #1', solved: false }, { name: 'Challenge #2', solved: false }]))
-    spyOn(mockSocket, 'on')
-    component.ngOnInit()
-    const triggerChallengeSolvedEvent = mockSocket.on.calls.argsFor(0)[1]
-    triggerChallengeSolvedEvent({ challenge: 'ping', name: 'Challenge #1337' })
-    expect(component.challenges[0].solved).toBe(false)
-    expect(component.challenges[1].solved).toBe(false)
-  })
+    it('should mark fix it code challenges as solved on "code challenge solved" websocket', (): void => {
+        expect(component.filteredChallenges.find((challenge) => challenge.key === 'challenge-2').codingChallengeStatus).toBe(1)
 
-  it('should be possible when challenge-solved notifications are shown with CTF flag codes', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ ctf: { showFlagsInNotifications: true }, application: {}, challenges: { showSolvedNotifications: true } }))
-    component.ngOnInit()
-    expect(component.allowRepeatNotifications).toBe(true)
-  })
+        component.onCodeChallengeSolvedWebsocket({
+            key: 'challenge-2',
+            codingChallengeStatus: 2
+        })
 
-  it('should not be possible when challenge-solved notifications are shown without CTF flag codes', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ ctf: { showFlagsInNotifications: false }, application: {}, challenges: { showSolvedNotifications: true } }))
-    component.ngOnInit()
-    expect(component.allowRepeatNotifications).toBe(false)
-  })
+        expect(component.filteredChallenges.find((challenge) => challenge.key === 'challenge-2').codingChallengeStatus).toBe(2)
+    })
 
-  it('should not be possible when challenge-solved notifications are not shown', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: { showSolvedNotifications: false } }))
-    component.ngOnInit()
-    expect(component.allowRepeatNotifications).toBe(false)
-  })
+    describe('socket payload handling', () => {
+        it('should ignore "challenge solved" websocket messages without a payload', (): void => {
+            const before = component.filteredChallenges.map(c => c.solved)
+            component.onChallengeSolvedWebsocket(undefined)
+            expect(component.filteredChallenges.map(c => c.solved)).toEqual(before)
+        })
 
-  it('should show notification for selected challenge when enabled', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ ctf: { showFlagsInNotifications: true }, application: {}, challenges: { showSolvedNotifications: true } }))
-    component.ngOnInit()
-    expect(component.allowRepeatNotifications).toBeTruthy()
-  })
+        it('should ignore "code challenge solved" websocket messages without a payload', (): void => {
+            const before = component.filteredChallenges.map(c => c.codingChallengeStatus)
+            component.onCodeChallengeSolvedWebsocket(undefined)
+            expect(component.filteredChallenges.map(c => c.codingChallengeStatus)).toEqual(before)
+        })
+    })
 
-  it('should not happen when hints are not turned on in configuration', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: { showHints: false } }))
-    component.ngOnInit()
-    expect(component.showChallengeHints).toBeFalsy()
-  })
+    describe('filter settings and reset', () => {
+        it('should navigate with the converted query params when filter settings are updated', () => {
+            const router = TestBed.inject(Router)
+            const navSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true)
+            component.onFilterSettingUpdate({ ...component.filterSetting, searchQuery: 'apple' })
+            expect(navSpy).toHaveBeenCalled()
+            const passed = navSpy.mock.calls[0][1]
+            expect(passed.queryParams).toBeDefined()
+        })
 
-  it('should be empty for challenge with neither hint text nor URL', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: { showHints: true } }))
-    challengeService.find.and.returnValue(of([{ name: 'Challenge' }]))
-    component.ngOnInit()
-    expect(component.challenges[0].hint).toBeUndefined()
-  })
+        it('should navigate to the default filter settings on reset', () => {
+            const router = TestBed.inject(Router)
+            const navSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true)
+            component.reset()
+            expect(navSpy).toHaveBeenCalled()
+        })
 
-  it('should remain unchanged for challenge with a hint text but no hint URL', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: { showHints: true } }))
-    challengeService.find.and.returnValue(of([{ name: 'Challenge', hint: 'Hint' }]))
-    component.ngOnInit()
-    expect(component.challenges[0].hint).toBe('Hint')
-  })
+        it('should trigger highlightTutorial for 1 second when Tutorial tag is selected', () => {
+            vi.useFakeTimers()
+            try {
+                component.filterSetting = { ...component.filterSetting, tags: ['Tutorial'] }
+                component.filterAndUpdateChallenges()
+                expect(component.highlightTutorial).toBe(true)
 
-  it('should append click-me text for challenge with a hint text and URL', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: { showHints: true } }))
-    challengeService.find.and.returnValue(of([{ name: 'Challenge', hint: 'Hint.', hintUrl: 'http://hi.nt' }]))
-    translateService.get.and.returnValue(of('CLICK_FOR_MORE_HINTS'))
-    component.ngOnInit()
-    expect(component.challenges[0].hint).toBe('Hint. CLICK_FOR_MORE_HINTS')
-  })
+                vi.advanceTimersByTime(1000)
+                expect(component.highlightTutorial).toBe(false)
+            } finally {
+                vi.useRealTimers()
+            }
+        })
 
-  it('should become click-me text for challenge without a hint text but with hint URL', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: { showHints: true } }))
-    translateService.get.and.returnValue(of('CLICK_TO_OPEN_HINTS'))
-    challengeService.find.and.returnValue(of([{ name: 'Challenge', hintUrl: 'http://hi.nt' }]))
-    component.ngOnInit()
-    expect(component.challenges[0].hint).toBe('CLICK_TO_OPEN_HINTS')
-  })
+        it('should trigger highlightCodingChallenge for 1 second when With Coding Challenge tag is selected', () => {
+            vi.useFakeTimers()
+            try {
+                component.filterSetting = { ...component.filterSetting, tags: ['With Coding Challenge'] }
+                component.filterAndUpdateChallenges()
+                expect(component.highlightCodingChallenge).toBe(true)
 
-  it('should show GitHub info box if so configured', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: { showGitHubLinks: true }, challenges: {} }))
-    component.ngOnInit()
-    expect(component.showContributionInfoBox).toBe(true)
-  })
+                vi.advanceTimersByTime(1000)
+                expect(component.highlightCodingChallenge).toBe(false)
+            } finally {
+                vi.useRealTimers()
+            }
+        })
 
-  it('should hide GitHub info box if so configured', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: { showGitHubLinks: false }, challenges: {} }))
-    component.ngOnInit()
-    expect(component.showContributionInfoBox).toBe(false)
-  })
+        it('should reset highlights immediately when tags are deselected', () => {
+            vi.useFakeTimers()
+            try {
+                component.filterSetting = { ...component.filterSetting, tags: ['Tutorial', 'With Coding Challenge'] }
+                component.filterAndUpdateChallenges()
+                expect(component.highlightTutorial).toBe(true)
+                expect(component.highlightCodingChallenge).toBe(true)
 
-  it('should show GitHub button by default', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: {} }))
-    component.ngOnInit()
-    expect(component.showHackingInstructor).toBeFalsy()
-  })
+                component.filterSetting = { ...component.filterSetting, tags: [] }
+                component.filterAndUpdateChallenges()
+                expect(component.highlightTutorial).toBe(false)
+                expect(component.highlightCodingChallenge).toBe(false)
+            } finally {
+                vi.useRealTimers()
+            }
+        })
+    })
 
-  it('should offer Hacking Instructor if so configured', () => {
-    configurationService.getApplicationConfiguration.and.returnValue(of({ application: {}, challenges: {}, hackingInstructor: { isEnabled: true } }))
-    component.ngOnInit()
-    expect(component.showHackingInstructor).toBeTruthy()
-  })
+    describe('repeatChallengeNotification', () => {
+        it('should request the backend to repeat the notification for the matching challenge', async () => {
+            challengeService.repeatNotification = vi.fn().mockReturnValue(of('ok'))
+            await component.repeatChallengeNotification('challenge-2')
+            expect(challengeService.repeatNotification).toHaveBeenCalledWith(encodeURIComponent('Challenge 2'))
+        })
+    })
+
+    describe('unlockHint', () => {
+        it('should refresh challenges without re-running initialization on success', () => {
+            hintService.put.mockReturnValue(of({}))
+            const spy = vi.spyOn(component, 'ngOnInit')
+            component.unlockHint(7, 'challenge-3')
+            expect(component.lastUnlockedChallengeKey).toBe('challenge-3')
+            expect(spy).not.toHaveBeenCalled()
+            expect(challengeService.find).toHaveBeenCalledTimes(2)
+            expect(socket.on).toHaveBeenCalledTimes(2)
+        })
+
+        it('should clear the last unlocked challenge key when no key is provided', () => {
+            hintService.put.mockReturnValue(of({}))
+            component.lastUnlockedChallengeKey = 'previous'
+            component.unlockHint(7)
+            expect(component.lastUnlockedChallengeKey).toBeNull()
+        })
+    })
+
+    describe('ngOnDestroy', () => {
+        it('should unsubscribe data and route subscriptions and detach the registered socket handlers', () => {
+            const spies = (component as any).subscriptions.map((s: any) => vi.spyOn(s, 'unsubscribe'))
+            component.ngOnDestroy()
+            spies.forEach((spy: any) => expect(spy).toHaveBeenCalled())
+            expect(socket.off).toHaveBeenCalledTimes(2)
+            expect(socket.off.mock.calls[0]).toEqual(socket.on.mock.calls[0])
+            expect(socket.off.mock.calls[1]).toEqual(socket.on.mock.calls[1])
+        })
+    })
 })
